@@ -224,10 +224,49 @@ install_sensor(){
 }
 
 generator_config(){
+    ## basic variables
+    sensor_port=9088
+    jax_server_name="jax"
+    cmdb_server_name="cmdb"
+    mysql_db_name=${1:-"sensor_db_auto"}
+    mysql_addr_port=${2:-"192.168.31.40:3306"}
+    mysql_user=${3:-"root"}
+    mysql_passwd=${4:-"MySQL@123"}
+    mysql_addr="jdbc:mysql://${mysql_addr_port}/${mysql_db_name}?characterEncoding=utf8&useSSL=false&allowMultiQueries=true"
+    kafka_addr="192.168.31.132"
+    kafka_port=9092
+    kt_predict="kt_predict"
+    kt_alert="kt_alert"
+    kt_offline="kt_offline"
+    kt_online="kt_online"
+    kt_sync="kt_sync"
+    view_addr="localhost"
+    view_port=8001
+    warm_up="false"
+    nacos_pub="MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC9IARaXJGPLOLsVqHVCI9xLSna4EaKWU6nHEUOHFvYG9LbLMm9h6DY8XJsC/ieO4wRZcqQnUObuhm42Ss7lDf1Wvs9cUZaUlznt6+iby0ehwj/ikp67p3R7Njyg0LCxAbnJJYK98/cFuKm1h5x64iUb5gYvUL0Yr9zSFw2g+7Z8QIDAQAB"
+    nacos_priv="MIICdwIBADANBgkqhkiG9w0BAQEFAASCAmEwggJdAgEAAoGBAL0gBFpckY8s4uxWodUIj3EtKdrgRopZTqccRQ4cW9gb0tssyb2HoNjxcmwL+J47jBFlypCdQ5u6GbjZKzuUN/Va+z1xRlpSXOe3r6JvLR6HCP+KSnrundHs2PKDQsLEBucklgr3z9wW4qbWHnHriJRvmBi9QvRiv3NIXDaD7tnxAgMBAAECgYEAsIyB48TEUQ7K62tX+WHbXgCWMO/qid4i0VdPk4OfrVcT+GyQC3DgE4UZlol6VmQqNld6yJM2eNo6htecRyrvLG4FwLQcWIBqJQySoyYeekKLQVsnYU4vGjvA92E8cUHfnTJ/ZSTUFLRDinzCMRvL4mHaINVQSizBTAnZpA3eqAECQQDhxQRX71uJGAP8v9bEJy5jvdidhGxYFaQLfUik4rDxkOr+4RaNSWGAcKLfPrfk6zHvXbp6UkKZsk7uMpj42WSBAkEA1nLj5m6DcUFI6lfzonrpnCvsiaQhvOOXPsMpNoNPFdBvgOeACIVCSv2QQUD0+N1fXRjz243/iDhEic7WqKb9cQJAN/rb+tnUvod/5ZnDrNtyOzUFkvkUzDqBdH/aFVhIO32NZyl0qA+751cGa4hnnJFczldVN6NR9D4sKA/PslRlAQJBAJAOw+vTB3d4TLwn8yGOAgqIMzDPUl6qYLqnrbLSCLl1uMHWQdr3ce4gYdyD/0yCoYJPtdkijar7aYdNrEPFUfECQCxkn830hLKQM9GCdEkJEI3bW6UqzoUWweExul1AD5R9E8wKvjkBSUaaTuyQQpxw/xqJBveMYWJmNiKKQxSG72A"
+    redis_type="single"  # sentinel or single
+    redis_addr="192.168.31.54"
+    redis_port=6379
+    redis_passwd="123456"
+    vertica_addr="192.168.21.58"
+    vertica_port="5433"
+    vertica_db_name="dbadmin"
+    vertica_user="dbadmin"
+    vertica_passwd="123456"
+    vertica_url="jdbc:vertica://${vertica_addr}:${vertica_port}/${vertica_db_name}"
+    nacos_app_name="dealAnalysis"
+    nacos_addr="192.168.21.58"
+    nacos_port="8848"
+    nacos_user="nacos"
+    nacos_passwd="0192023A7BBD73250516F069DF18B500"
+    nacos_ns=""  # namespace
 
-cat >> application.yml <<EOCAT
+
+    # generate sensor config
+    cat > application.yml <<EOCAT
 server:
-  port: 9088
+  port: $sensor_port
   advertised:
     address:
     port:
@@ -243,37 +282,37 @@ sensor:
     serviceName: dealAnalysis
   jax:
     server:
-      name: jax
+      name: ${jax_server_name}
     timeoutSeconds: 300
   es:
     timeoutSeconds: 60
     scrollSize: 5000
   kafka:
-    server: localhost:9092
+    server: ${kafka_addr}:${kafka_port}
     timeoutSeconds: 5
   predict:
-    kafkaServer: ${sensor.kafka.server}
-    kafkaTopic: sensor-predict
+    kafkaServer: \${sensor.kafka.server}
+    kafkaTopic: ${kt_predict}
   alert:
-    kafkaServer: ${sensor.kafka.server}
-    kafkaTopic: sensor-alert
+    kafkaServer: \${sensor.kafka.server}
+    kafkaTopic: ${kt_alert}
   offline:
-    kafkaServer: ${sensor.kafka.server}
-    kafkaTopic: sensor-offline-detect
+    kafkaServer: \${sensor.kafka.server}
+    kafkaTopic: ${kt_offline}
   online:
-    kafkaServer: ${sensor.kafka.server}
-    kafkaTopic: sensor-online-detect
+    kafkaServer: \${sensor.kafka.server}
+    kafkaTopic: ${kt_online}
     pipeline:
-      warmUpEnabled: true
+      warmUpEnabled: ${warm_up}
   sync:
-    kafkaServer: ${sensor.kafka.server}
-    kafkaTopic: sensor-sync-data
+    kafkaServer: \${sensor.kafka.server}
+    kafkaTopic: ${kt_sync}
     health:
       intervalSecond: 60
       schema: sensor_sched
   view:
     remote:
-      server: localhost:8001
+      server: ${view_addr}:${view_port}
       timeoutSeconds: 1800
   thread:
     corePoolSize: 5
@@ -284,15 +323,15 @@ sensor:
   cron:
     health: 0 %s 0/1 * * ? *
     poll: 0 * * * * ?
-  publicKey: publicKey
-  privateKey: privateKey
+  publicKey: ${nacos_pub}
+  privateKey: ${nacos_priv}
   model:
     storage:
       type: redis
   redis:
-    type: sentinel
+    type: ${redis_type}
   cmdb:
-    serviceName: cmdb
+    serviceName: ${cmdb_server_name}
   kerberos:
     service:
       name: kafka
@@ -324,14 +363,14 @@ spring:
       max-file-size: -1
       max-request-size: -1
   redis:
-    host: localhost
-    port: 6379
+    host: ${redis_addr}
+    port: ${redis_port}
     database: 0
     sentinel:
       master: mymaster
       nodes: localhost1:26379,localhost2:26379,localhost3:26379
     timeout: 1000
-    password: 123456
+    password: ${redis_passwd}
     lettuce:
       pool:
         max-active: 8
@@ -340,9 +379,9 @@ spring:
         max-wait: -1
   datasource:
     vertica:
-      url: jdbc:vertica://localhost:5433/sensor
-      username: dbadmin
-      password: 123456
+      url: ${vertica_url}
+      username: ${vertica_user}
+      password: ${vertica_passwd}
       driver-class-name: com.vertica.jdbc.Driver
       type: com.zaxxer.hikari.HikariDataSource
       hikari:
@@ -355,9 +394,9 @@ spring:
         maximum-pool-size: 16
         connection-test-query: SELECT 1
     mysql:
-      url: jdbc:mysql://localhost:3306/sensor_db?characterEncoding=utf8&useSSL=false&allowMultiQueries=true
-      username: root
-      password: User@123
+      url: ${mysql_url}
+      username: ${mysql_user}
+      password: ${mysql_passwd}
       driver-class-name: com.mysql.cj.jdbc.Driver
       type: com.zaxxer.hikari.HikariDataSource
       hikari:
@@ -378,7 +417,7 @@ spring:
         quartz:
           scheduler:
             instanceName: SensorQuartz
-            instanceId: ${sensor.serverId}
+            instanceId: \${sensor.serverId}
           jobStore:
             dataSource: quartzDataSource
             class: org.quartz.impl.jdbcjobstore.JobStoreTX
@@ -397,4 +436,29 @@ spring:
             threadsInheritGroupOfInitializingThread: true
             threadsInheritContextClassLoaderOfInitializingThread: true
 EOCAT
+    # generate bootstrap.properties for registry nacos
+    cat > bootstrap.properties <<-EOCAT
+        spring.application.name=${nacos_app_name}
+        spring.profiles.active=dev
+        spring.cloud.nacos.config.server-addr=${nacos_addr}:${nacos_port}
+        spring.cloud.nacos.config.username=${nacos_user}
+        spring.cloud.nacos.config.password=${nacos_passwd}
+        spring.cloud.nacos.config.namespace=${nacos_ns}
+        spring.cloud.nacos.config.file-extension=yaml
+        spring.cloud.nacos.config.enabled=false
+
+        spring.cloud.nacos.discovery.server-addr=${nacos_addr}:${nacos_port}
+        spring.cloud.nacos.discovery.username=${nacos_user}
+        spring.cloud.nacos.discovery.password=${nacos_passwd}
+        spring.cloud.nacos.discovery.cluster-name=${nacos_app_name}
+        spring.cloud.nacos.discovery.namespace=${nacos_ns}
+    EOCAT
+    # generate sensor.conf
+    cat > sensor.conf <<-EOCAT
+        username=${vertica_user}
+        password=${vertica_passwd}
+        dbhost=${vertica_addr}
+        dbport=${vertica_port}
+        config-schema=sensor_sched
+    EOCAT
 }
