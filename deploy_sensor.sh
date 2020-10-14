@@ -1,9 +1,9 @@
-#!/bin/bash
+#!/bin/bash -x
 
 
-#####################
-## common functions #
-#####################
+###################
+# common functions
+###################
 
 raise_error(){
     echo -e "\e[1;31m$*\e[0m"
@@ -21,40 +21,69 @@ usage(){
 }
 
 handle_params(){
+    # intial variables
+    JAVA_PATH="/usr/local/java"
+    JAVA_PACKAGE_URL="ftp://192.168.31.84/0.Sharplook_Release/OpenSource/jdk-8u261-linux-x64.tar.gz"
+    DOCKER_PATH="/usr/local/docker"
+    DOCKER_PACKAGE_URL="ftp://192.168.31.84/vision/app/docker/docker-18.09.5.tgz"
+    SENSOR_PACKAGE_URL="ftp://192.168.31.84/0.Sharplook_Release/Sensor/4.1/sensor-4.1.9-20200930-91b64db5.tar.gz"
+    SENSOR_INSTALL_PATH=$PWD
+    JVM1=1024
+    JVM2=1024
+
     PARAM_NUM=$#
     set -- "$@"
 
-    [ $PARAM_NUM -gt 0 ] && while true; do
+    test $PARAM_NUM -gt 0 && while true; do
         case "$1" in
-            -t|--time)
-                curtime=${2:?"Param losted"}
-                echo $curtime
-                shift 2
-                ;;
-            -m|--month)
-                month=true
-                echo $month
-                shift 1
-                ;;
+            --java_path)
+                JAVA_PATH=$2
+                shift 2 ;;
+            --java_package_url)
+                JAVA_PACKAGE_URL=$2
+                shift 2 ;;
+            --docker_path)
+                DOCKER_PATH=$2
+                shift 2 ;;
+            --docker_package_url)
+                DOCKER_PACKAGE_URL=$2
+                shift 2 ;;
+            --sensor_package_url)
+                SENSOR_PACKAGE_URL=$2
+                shift 2 ;;
+            --sensor_install_path)
+                SENSOR_INSTALL_PATH=$2
+                shift 2 ;;
+            --jvm1)
+                JVM1=$2
+                shift 2 ;;
+            --jvm2)
+                JVM2=$2
+                shift 2 ;;
+            -h|--help)
+                usage;;
             *)
-                remand_args="$@"
+                echo "Sorry, not clear what args: $1 mean. Skip!"
+                warn_param=true
                 break;;
         esac
     done
+    test -z $warn_param || {
+        echo "Some params you input not clear, please check usage!"
+        echo "$0 -h|--help"
+    }
 }
-handle_params "$@"
 
 
-
-######################
-## common components #
-######################
+####################
+# common components
+####################
 
 install_java(){
-    ###############################################
-    ## usage:                                     #
-    ## install_java install_path java_package_url #
-    ###############################################
+    #############################################
+    # usage:
+    # install_java install_path java_package_url
+    #############################################
 
     # check whether java already installed
     command -v java > /dev/null && { inform "Java Runtime Environment alreadly satisfied!"; return;}
@@ -66,8 +95,8 @@ install_java(){
     java_tar_file=${package_url##.*/}
     # start install java
     mkdir -p $java_install_path
-    rm -rf $java_tar_file
     # Download package
+    rm -rf $java_tar_file
     wget $package_url && test -e $java_tar_file || raise_error "Download Java package failed!"
     # untar package
     tar -zxf $java_tar_file -C $java_install_path
@@ -79,7 +108,7 @@ install_java(){
     export JRE_HOME=$JAVA_HOME/jre
     export CLASSPATH=$CLASSPATH:$JAVA_HOME/jre/lib
     export PATH=$JAVA_HOME/bin:$PATH
-    EOCAT
+EOCAT
     # check install result
     export JAVA_HOME=$jdk_path
     export JRE_HOME=$JAVA_HOME/jre
@@ -94,10 +123,10 @@ install_java(){
 ######################
 
 install_docker(){
-    ###############################################
-    ## usage:                                     #
-    ## install_docker
-    ###############################################
+    ##############################################
+    # usage:
+    # install_docker
+    ##############################################
     command -v docker > /dev/null && { inform "docker application alreadly satisfied!"; return;}
     install_path=${1:-"/usr/local/docker"}
     defalut_package_url="ftp://192.168.31.84/vision/app/docker/docker-18.09.5.tgz"
@@ -107,19 +136,20 @@ install_docker(){
     # Start install docker
     mkdir -p $install_path
     # Download docker package
+    rm -rf $docker_tar_file
     wget $package_url && test -e $docker_tar_file || raise_error "Download docker package failed!"
     # untar package
     tar -zxf $docker_tar_file -C $install_path
     test -d $docker_path && inform "Docker package untar successful!" || raise_error "Docker package untar error!"
     # Set environment
-    echo 'export PATH=$PATH:$docker_path' >> /etc/profile
+    echo 'export PATH=$PATH'":$docker_path" >> /etc/profile
     export PATH=$PATH:$docker_path
     command -v docker > /dev/null && inform "Docker install successfule!" || raise_error "Dcoker install failed!"
 }
 
 launch_dockerd(){
     ###############################################
-    ## usage:                                     #
+    ## usage:
     ## launch_dockerd
     ###############################################
     # make sure dockerd is active
@@ -129,7 +159,10 @@ launch_dockerd(){
     command -v docker > /dev/null || install_docker
     # launch dockerd
     for i in 10 20 30 ; do
-        docker ps &> /dev/null && break || { mkdir -p /var/log; nohup $docker_path/dockerd &> /var/log/docker.log &; sleep $i; }
+        docker ps &> /dev/null && break
+        mkdir -p /var/log
+        nohup $docker_path/dockerd &> /var/log/docker.log &
+        sleep $i
     done
     # check result
     sleep 10 # dockerd will auto exit while it encounter unexpected error
@@ -138,20 +171,22 @@ launch_dockerd(){
 
 install_algorithm(){
     ###############################################
-    ## usage:                                     #
+    ## usage:
     ## install_algorithm
     ###############################################
     ## pyenv prepare
     # python environment image url
-    pyenv_image_name=jax_pyenv_img
+    pyenv_image_name="jax_pyenv_img"
+    algorithm_port=8001
     pyenv_tar_url=${1:-"ftp://192.168.31.84/Deploy/sensor/python/env/jax_pyenv.tar"}
     pyenv_tar_file=${pyenv_tar_url##*/}
     # pyenv_path=$PWD
     # load pyenv image
-    docker images | grep $pyenv_image_name && {
+    docker images | grep $pyenv_image_name || {
+        rm -rf $pyenv_tar_file
         wget $pyenv_tar_url
         test -f $pyenv_tar_file || raise_error "pyenv image download failed!"
-        docker load -i $pyenv_tar_file $pyenv_image_name
+        docker import $pyenv_tar_file $pyenv_image_name
         docker images | grep $pyenv_image_name || raise_error "pyenv docker image load failed!"
     }
     ## install pyenv service
@@ -159,12 +194,14 @@ install_algorithm(){
     pyenv_service_file=${pyenv_service_url##*/}
     pyenv_service_path=${3:-$PWD/jax-algorithm}
     # download service file
+    rm -rf $pyenv_service_file
     wget $pyenv_service_url
     test -f $pyenv_service_file || raise_error "Download pyenv service file failed!"
     # untar service file
+    rm -rf $pyenv_service_path
     mkdir -p $pyenv_service_path
     tar -zxf $pyenv_service_file -C $pyenv_service_path
-    test -d $pyenv_service_path || raise_error "Untar pyenv service file failed!"
+    test -z "ls -A `$pyenv_service_path`" && raise_error "Untar pyenv service file failed!"
     ## edit config
     setting_config_file=$pyenv_service_path/web/web/settings.py
     dbIP=${4:-"192.168.21.58"}
@@ -174,29 +211,32 @@ install_algorithm(){
     dbTABLE[2]=${a:-"sensor_dt_result_online"}
     dbUSER=${7:-"dbadmin"}
     dbPASSWD=${8:-"123456"}
-    sed -i 's/(\"host\": ?).*/'$dbIP'/' $setting_config_file
-    sed -i 's/(\"port\": ?).*/'$dbPORT'/' $setting_config_file
-    sed -i 's/(\"database\": ?).*/'$dbNAME'/' $setting_config_file
-    # sed -i 's/(\"table\": ).*/'$dbTALBE'/' $setting_config_file
-    sed -i 's/(\"username\": ?).*/'$dbUSER'/' $setting_config_file
-    sed -i 's/(\"password\": ?).*/'$dbPASSWD'/' $setting_config_file
-    # launch pyenv service
+    sed -i 's/\(\"host\":\s*\).*/\1'\"$dbIP\"'/' $setting_config_file
+    sed -i 's/\(\"port\":\s*\).*/\1'\"$dbPORT\"'/' $setting_config_file
+    sed -i 's/\(\"database\":\s*\).*/\1'\"$dbNAME\"'/' $setting_config_file
+    sed -i 's/\(\"username\":\s*\).*/\1'\"$dbUSER\"'/' $setting_config_file
+    sed -i 's/\(\"password\":\s*\).*/\1'\"$dbPASSWD\"'/' $setting_config_file
+    ## launch pyenv service
     pyenv_service_container_name=jax_pyenv
     cd $pyenv_service_path
     docker ps | grep $pyenv_service_container_name && docker kill $pyenv_service_container_name
     sleep 2
-    ./start.sh  # warn: keyword jax_pyenv in this script
+    docker run -p ${algorithm_port}:8020 -h ${pyenv_service_container_name} --name ${pyenv_service_container_name} -e LANG=C.UTF-8 --cpus 4 --memory 2g -v $(pwd):/jax-algorithm -v $(pwd)/web/release/uwsgi.conf:/etc/nginx/conf.d/uwsgi.conf --workdir /jax-algorithm/web -d --rm -it ${pyenv_image_name} /jax-algorithm/web/start.sh
     # check result
+    sleep 2
     docker ps | grep $pyenv_service_container_name || inform "pyenv service launch successful!" || raise_error "pyenv service launch failed!"
-    cd -
+    cd - > /dev/null
 }
 
+
 install_sensor(){
-    ##########################
+    ###################################
     # install sensor
     # usage:
-    # install_sensor sensor_package_url
-    #########################
+    #   install_sensor sensor_package_url
+    ###################################
+
+    # basic variables
     sensor_package_url=${1:-"ftp://192.168.31.84/0.Sharplook_Release/Sensor/4.1/sensor-4.1.9-20200930-91b64db5.tar.gz"}
     sensor_package_file=${sensor_package_url##*/}
     sensor_install_path=${2:-$PWD}
@@ -208,6 +248,11 @@ install_sensor(){
     tar -zxf $sensor_package_file -C $sensor_install_path
 
     ## generator config
+    generator_config && {
+        cp -f application.yml $sensor_install_path/sensor/application.yml
+        cp -f bootstrap.properties $sensor_install_path/sensor/bootstrap.properties
+        cp -f sensor.conf $sensor_install_path/sensor/sensor.conf
+    }
 
     ## prepare database
     # init vertica database
@@ -224,17 +269,23 @@ install_sensor(){
 }
 
 generator_config(){
+    #############################
+    ## generator common files
+    #############################
+
     ## basic variables
     sensor_port=9088
     jax_server_name="jax"
     cmdb_server_name="cmdb"
-    mysql_db_name=${1:-"sensor_db_auto"}
-    mysql_addr_port=${2:-"192.168.31.40:3306"}
-    mysql_user=${3:-"root"}
-    mysql_passwd=${4:-"MySQL@123"}
+    mysql_db_name="sensor_db_auto"
+    mysql_addr_port="192.168.31.40:3306"
+    mysql_user="root"
+    mysql_passwd="MySQL@123"
     mysql_addr="jdbc:mysql://${mysql_addr_port}/${mysql_db_name}?characterEncoding=utf8&useSSL=false&allowMultiQueries=true"
     kafka_addr="192.168.31.132"
     kafka_port=9092
+    kafka_part_num=3
+    kafka_groupid=""
     kt_predict="kt_predict"
     kt_alert="kt_alert"
     kt_offline="kt_offline"
@@ -261,7 +312,6 @@ generator_config(){
     nacos_user="nacos"
     nacos_passwd="0192023A7BBD73250516F069DF18B500"
     nacos_ns=""  # namespace
-
 
     # generate sensor config
     cat > application.yml <<EOCAT
@@ -452,7 +502,7 @@ EOCAT
         spring.cloud.nacos.discovery.password=${nacos_passwd}
         spring.cloud.nacos.discovery.cluster-name=${nacos_app_name}
         spring.cloud.nacos.discovery.namespace=${nacos_ns}
-    EOCAT
+EOCAT
     # generate sensor.conf
     cat > sensor.conf <<-EOCAT
         username=${vertica_user}
@@ -460,5 +510,76 @@ EOCAT
         dbhost=${vertica_addr}
         dbport=${vertica_port}
         config-schema=sensor_sched
-    EOCAT
+EOCAT
+    # generate sensor_kafka_connector.sh
+    cat > sensor_kafka_connector.sh <<-EOCAT
+    #!/bin/sh
+    kafkaUrl=$kafka_addr:$kafka_port
+    partitionNum=$kafka_part_num
+    groupid=$kafka_groupid
+    vUser=$vertica_user
+    vPassword=$vertica_passwd
+
+    PATH=$PATH:/opt/vertica/packages/kafka/bin
+    export PATH
+
+    echo '创建资源池...'
+    echo 'DROP RESOURCE POOL sensor_pool;' | vsql -w \$vPassword -U \$vUser
+    echo "CREATE RESOURCE POOL sensor_pool MAXMEMORYSIZE '4G' PLANNEDCONCURRENCY 2 EXECUTIONPARALLELISM 2 QUEUETIMEOUT 0;" | vsql -w \$vPassword -U \$vUser
+
+    echo '创建计划任务...'
+    vkconfig scheduler --create --config-schema sensor_sched --operator dbadmin --frame-duration '00:00:30' --resource-pool sensor_pool --consumer-group-id \$groupid  --conf sensor.conf
+
+    echo '创建kafka cluster...'
+    vkconfig cluster --delete --cluster kafka_sensor --conf sensor.conf
+    vkconfig cluster --create --cluster kafka_sensor  --hosts \$kafkaUrl --conf sensor.conf
+
+    echo '创建load-spec...'
+    vkconfig load-spec --create --parser KafkaJSONParser --load-spec sensor_load --conf sensor.conf
+
+    echo '创建sensor_offline_detect加载connector...'
+    vkconfig target --create --target-schema public --target-table sensor_dt_result_offline --conf sensor.conf
+    vkconfig source --create --cluster kafka_sensor --source ${kt_offline} --partitions \$partitionNum --conf sensor.conf
+    vkconfig microbatch --create --microbatch sensor_offline_detect --target-schema public --target-table sensor_dt_result_offline --add-source ${kt_offline} --add-source-cluster kafka_sensor --load-spec sensor_load --consumer-group-id \$groupid  --conf sensor.conf
+
+    echo '创建sensor_online_detect加载connector...'
+    vkconfig target --create --target-schema public --target-table sensor_dt_result_online --conf sensor.conf
+    vkconfig source --create --cluster kafka_sensor --source ${kt_online} --partitions \$partitionNum --conf sensor.conf
+    vkconfig microbatch --create --microbatch sensor_online_detect --target-schema public --target-table sensor_dt_result_online --add-source ${kt_online} --add-source-cluster kafka_sensor --load-spec sensor_load --consumer-group-id \$groupid  --conf sensor.conf
+
+    echo '创建sensor-sync-data加载connector...'
+    vkconfig target --create --target-schema public --target-table sensor_dt_source --conf sensor.conf
+    vkconfig source --create --cluster kafka_sensor --source ${kt_sync} --partitions \$partitionNum --conf sensor.conf
+    vkconfig microbatch --create --microbatch sensor_source --target-schema public --target-table sensor_dt_source --add-source ${kt_sync} --add-source-cluster kafka_sensor --load-spec sensor_load --consumer-group-id \$groupid  --conf sensor.conf
+
+    echo '创建sensor-predict加载connector...'
+    vkconfig target --create --target-schema public --target-table sensor_tb_capacity --conf sensor.conf
+    vkconfig source --create --cluster kafka_sensor --source ${kt_predict} --partitions \$partitionNum --conf sensor.conf
+    vkconfig microbatch --create --microbatch sensor_capacity --target-schema public --target-table sensor_tb_capacity --add-source ${kt_predict} --add-source-cluster kafka_sensor --load-spec sensor_load --consumer-group-id \$groupid  --conf sensor.conf
+
+    echo '创建sensor-alert加载connector...'
+    vkconfig target --create --target-schema public --target-table sensor_tb_alert --conf sensor.conf
+    vkconfig source --create --cluster kafka_sensor --source ${kt_alert} --partitions \$partitionNum --conf sensor.conf
+    vkconfig microbatch --create --microbatch sensor_alert --target-schema public --target-table sensor_tb_alert --add-source ${kt_alert} --add-source-cluster kafka_sensor --load-spec sensor_load --consumer-group-id \$groupid  --conf sensor.conf
+    # 修改Launcher后台运行的方式,保持launch一直后台运行
+    while true; do
+        launch_pid=`jps | grep "Launcher" | cut -d " " -f 1`
+        test -z $launch_pid && vkconfig launch --conf sensor.conf &
+        sleep 60
+        jps
+    done
+EOCAT
 }
+
+
+main(){
+    handle_params    
+    # echo -e "docker path is $DOCKER_PATH\npckage url is $DOCKER_PACKAGE_URL"
+    install_java $JAVA_PATH $JAVA_PACKAGE_URL
+    install_docker $DOCKER_PATH $DOCKER_PACKAGE_URL
+    launch_dockerd
+    install_algorithm
+    # install_sensor $SENSOR_PACKAGE_URL $SENSOR_INSTALL_PATH $JVM1 $JVM2
+}
+
+main
